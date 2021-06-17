@@ -9,6 +9,8 @@ from backend import *
 from enemies import *
 
 
+
+
 class enemy_spawn(arcade.SpriteSolidColor):
     def __init__(self, width: int, height: int, pos_x, pos_y, available_enemies, spawn_ratios, game_controller, spawn_interval=1, spawn_offset=1.5):
         super().__init__(width, height, "black")
@@ -22,9 +24,6 @@ class enemy_spawn(arcade.SpriteSolidColor):
         self.spawn_interval = spawn_interval
         self.spawn_offset = spawn_offset
 
-        self.game_controller.physics_engine.add_sprite(self,
-                                                       collision_type=collision_group.wall,
-                                                       body_type=arcade.PymunkPhysicsEngine.STATIC)
 
     def enable(self):
         clock.schedule_once(self._spawn, self.spawn_offset)
@@ -34,7 +33,7 @@ class enemy_spawn(arcade.SpriteSolidColor):
         y = uniform(self.bottom, self.top)
         spawned_enemy = choice(self.available_enemies, p=self.spawn_ratios)
         spawned_enemy(self.game_controller, center_x=x, center_y=y)
-        clock.schedule_once(self._spawn, self.spawn_interval)
+        clock.schedule_once(self._spawn, self.spawn_interval*np.sqrt(len(self.game_controller.enemy_list)+1))
 
 
     def __del__(self):

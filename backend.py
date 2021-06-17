@@ -44,7 +44,7 @@ PLAYER_MOVEMENT_SPEED = 5
 PLAYER_DAMPING = 0.005
 PLAYER_FRICTION = 0
 PLAYER_MASS = 2.0
-PLAYER_MOMENT = physics.PymunkPhysicsEngine.MOMENT_INF
+MOMENT = physics.PymunkPhysicsEngine.MOMENT_INF
 PLAYER_MAX_SPEED = 700
 PLAYER_MOVE_FORCE = 8000
 
@@ -67,6 +67,21 @@ HUD_WIDTH = 850
 
 BOX_WIDTH = 64
 
+GUI_ALPHA = np.array((0,0,0,128), dtype=float)
+GUI_COLOR = np.array( (196, 196, 196, 0), dtype=float ) + GUI_ALPHA
+GUI_GREEN = np.array( (0, 196, 0, 0), dtype=float ) +GUI_ALPHA
+BACKGROUND_COLOR = arcade.csscolor.GREY
+BACKGROUND_RED = (196, 0, 0, 0)
+MENU_COLOR = arcade.csscolor.DARK_SLATE_BLUE
+
+
+FONT_COLOR= (0, 0, 0, 196)
+HEADER_FONT_SIZE = 196
+TEXT_FONT_SIZE = 128
+AUX_FONT_SIZE = 48
+
+
+
 
 class collision_group(enum.Enum):
     enemy = "enemy"
@@ -74,6 +89,7 @@ class collision_group(enum.Enum):
     wall = "wall"
     bullet = "bullet"
     enemy_bullet = "enemy_bullet"
+    modifier = "modifier"
 
 
 class BulletSprite(arcade.Sprite):
@@ -100,8 +116,11 @@ def wall_hit_handler(bullet_sprite, _wall_sprite, _arbiter, _space, _data):
 
 def enemy_hit_handler(bullet_sprite, _enemy_sprite, _arbiter, _space, _data):
     try:
-        _enemy_sprite.take_damage(bullet_sprite.damage)
-        bullet_sprite.remove_from_sprite_lists()
+        if bullet_sprite.last_enemy is not _enemy_sprite:
+            bullet_sprite.last_enemy = _enemy_sprite
+            _enemy_sprite.take_damage(bullet_sprite.damage)
+        if not bullet_sprite.is_penetraiting:
+            bullet_sprite.remove_from_sprite_lists()
     except Exception:
         pass
 
@@ -129,88 +148,23 @@ def enemy_player_handler(enemy, player, _arbiter, _space, _data):
     return player.take_damage(enemy.damage)
     
 
-
-class weapon(metaclass=ABCMeta):
-    def __init__(self, shooter, game_controller):
-        self.clip_size
-
-        self.damage
-
-        self.reload_time
-        self.bullet_mass
-        self.bullet_speed
-        self.bullet_move_force
-        self.angle_distribution
-        self.shoot_interval
-
-        self.projectile_path
-
-        self.current_clip_size = self.clip_size
-        self.collision_group = collision_group.bullet
-        self.is_reloading = False
-        self.shooter = shooter
-        self.bullet_list = game_controller.bullet_list
-        self.physics_engine = game_controller.physics_engine
-        self.is_ready = True
-        self.projectile_factory = lambda: BulletSprite(self.projectile_path,
-                                                       CHARACTER_SCALING, *game_controller.screen_dimensions, self.damage
-                                                       )
-
-    def _reload_action(self, dt):
-        self.current_clip_size = self.clip_size
-        self.is_reloading = False
-        print("weapon reloaded")
-
-    def _ready_weapon(self, dt):
-        self.is_ready = True
-
-    def reload(self):
-        if not self.is_reloading:
-            print("reloading")
-            self.current_clip_size = None
-            self.is_reloading = True
-            clock.schedule_once(self._reload_action, self.reload_time)
+def modifier_enemy_handler(modifier, enemy, _arbiter, _space, _data):
+    return False
 
 
-    def shoot(self, x, y):
-        if not self.current_clip_size or not self.is_ready:
-            return
-        self.is_ready = False
-        clock.schedule_once(self._ready_weapon, self.shoot_interval)
-        bullet = self.projectile_factory()
-        self.bullet_list.append(bullet)
+def modifier_player_handler(modifier, player, _arbiter, _space, _data):
+    modifier.on_pickup()
+    modifier.remove_from_sprite_lists()
+    return False
 
-        """Wygeneruj pocisk na granicy sprite'a gracza, a następnie nadaj mu prędkość """
-        start_x = self.shooter.center_x
-        start_y = self.shooter.center_y
-        bullet.position = self.shooter.position
-        x_diff = x - start_x
-        y_diff = y - start_y
-        angle = np.arctan2(y_diff, x_diff)+self.angle_distribution()
-        size = self.shooter.width/2
-        bullet.center_x += size * np.cos(angle)
-        bullet.center_y += size * np.sin(angle)
-        bullet.angle = np.degrees(angle)
-        self.physics_engine.add_sprite(bullet,
-                                       mass=self.bullet_mass,
-                                       damping=1.0,
-                                       friction=1.0,
-                                       collision_type=self.collision_group,
-                                       max_velocity=self.bullet_speed)
-        force = (self.bullet_move_force, 0)
-        self.physics_engine.apply_force(bullet, force)
-        self.current_clip_size -= 1
+def modifier_enemy_bullet_handler(modifier, enemy_bullet, _arbiter, _space, _data):
+    return False
 
-    def __del__(self):
-        clock.unschedule(self._reload_action)
-        clock.unschedule(self._ready_weapon)
+def modifier_bullet_handler(modifier, bullet, _arbiter, _space, _data):
+    return False
 
 
-    def get_clip_size(self):
-        return self.clip_size
 
-    def get_current_clip_size(self):
-        return self.current_clip_size
 
 
 class entity(ABC, arcade.Sprite):
@@ -221,7 +175,7 @@ class entity(ABC, arcade.Sprite):
         self.move_force = kwargs['move_force']
         self.moves = True
 
-        super().__init__(kwargs['path'], scale, hit_box_algorithm="Detailed")
+        super().__init__(kwargs['path'], scale, hit_box_algorithm="Simple")
         self.change_x = 0
         self.change_y = 0
 
@@ -229,12 +183,12 @@ class entity(ABC, arcade.Sprite):
             self.center_x = kwargs['center_x']
             self.center_y = kwargs['center_y']
 
-        moment = physics.PymunkPhysicsEngine.MOMENT_INF
+        
 
         self.physics_engine.add_sprite(self,
                                        friction=kwargs['friction'],
                                        mass=kwargs['mass'],
-                                       moment=moment,
+                                       moment=MOMENT,
                                        collision_type=kwargs['collision_type'],
                                        max_velocity=kwargs['max_velocity'],
                                        damping=kwargs['damping'],
@@ -258,32 +212,7 @@ class entity(ABC, arcade.Sprite):
         pass
 
 
-class enemy(entity):
-    def __init__(self,  game_handler, **kwargs):
-        kwargs["collision_type"] = collision_group.enemy
-        self.point_value
-        self.damage
-        self.game_handler = game_handler
-        self.move_force = kwargs["move_force"]
-        self.speed = kwargs["speed"]
-        super().__init__(game_handler, **kwargs)
 
-        game_handler.enemy_list.append(self)
-
-    def die(self):
-        self.game_handler.on_enemy_death(self.point_value)
-        self.remove_from_sprite_lists()
-
-    def rotate(self):
-        angle = np.degrees(-np.arctan2(self.change_x, self.change_y))
-        self.turn_left(angle)
-
-    def is_in_play_area(self):
-
-        tmp_x = self.center_x <= self.game_handler.screen_dimensions[0] and self.center_x >= 0
-        tmp_y = self.center_y <= self.game_handler.screen_dimensions[1] and self.center_y >= 0
-
-        return tmp_x and tmp_y
 
 
 class player(entity):
@@ -304,6 +233,7 @@ class player(entity):
 
     def die(self):
         print("you died")
+        #print(self.game_over_function)
         self.game_over_function()
 
     def controller(self):

@@ -4,6 +4,94 @@ import numpy as np
 import scipy.stats as stats
 
 
+class weapon(metaclass=ABCMeta):
+    is_penetraiting = False
+    def __init__(self, shooter, game_controller):
+        self.clip_size
+
+        self.damage
+
+        self.reload_time
+        self.bullet_mass
+        self.bullet_speed
+        self.bullet_move_force
+        self.angle_distribution
+        self.shoot_interval
+
+        self.projectile_path
+        self.to_reload_time = 0
+
+        self.current_clip_size = self.clip_size
+        self.collision_group = collision_group.bullet
+        self.is_reloading = False
+        self.shooter = shooter
+        self.bullet_list = game_controller.bullet_list
+        self.physics_engine = game_controller.physics_engine
+        self.is_ready = True
+        self.projectile_factory = lambda: BulletSprite(self.projectile_path,
+                                                       CHARACTER_SCALING, *game_controller.screen_dimensions, self.damage
+                                                       )
+
+    def _reload_action(self, dt):
+        self.current_clip_size = self.clip_size
+        self.is_reloading = False
+        print("weapon reloaded")
+
+    def _ready_weapon(self, dt):
+        self.is_ready = True
+
+    def reload(self):
+        if not self.is_reloading and self.get_current_clip_size()!= self.clip_size:
+            print("reloading")
+            self.current_clip_size = None
+            self.is_reloading = True
+            self.to_reload_time = self.reload_time
+            clock.schedule_once(self._reload_action, self.reload_time)
+
+
+    def shoot(self, x, y):
+        if not self.current_clip_size or not self.is_ready:
+            return
+        self.is_ready = False
+        clock.schedule_once(self._ready_weapon, self.shoot_interval)
+        bullet = self.projectile_factory()
+        self.bullet_list.append(bullet)
+
+        """Wygeneruj pocisk na granicy sprite'a gracza, a następnie nadaj mu prędkość """
+        start_x = self.shooter.center_x
+        start_y = self.shooter.center_y
+        bullet.position = self.shooter.position
+        x_diff = x - start_x
+        y_diff = y - start_y
+        angle = np.arctan2(y_diff, x_diff)+self.angle_distribution()
+        size = self.shooter.width/2
+        bullet.center_x += size * np.cos(angle)
+        bullet.center_y += size * np.sin(angle)
+        bullet.angle = np.degrees(angle)
+        bullet.is_penetraiting = self.is_penetraiting
+        bullet.last_enemy = None
+        self.physics_engine.add_sprite(bullet,
+                                       mass=self.bullet_mass,
+                                       damping=1.0,
+                                       friction=1.0,
+                                       collision_type=self.collision_group,
+                                       max_velocity=self.bullet_speed)
+        force = (self.bullet_move_force, 0)
+        self.physics_engine.apply_force(bullet, force)
+        self.current_clip_size -= 1
+
+    def __del__(self):
+        clock.unschedule(self._reload_action)
+        clock.unschedule(self._ready_weapon)
+
+
+    def get_clip_size(self):
+        return self.clip_size
+
+    def get_current_clip_size(self):
+        return self.current_clip_size
+
+
 class weapon_holder():
 
     def __init__(self, *args):
@@ -102,7 +190,7 @@ class crossbow(weapon):
         self.reload()
 
 
-class shotgun(weapon):
+class shotgun(player_weapon):
     clip_size = 5
     damage = 5
     reload_time = 1.2
@@ -133,9 +221,10 @@ class shotgun(weapon):
         self.current_clip_size = self.clip_size*self.shell_number
 
     def reload(self):
-        if not self.is_reloading:
+        if not self.is_reloading and self.get_current_clip_size()!= self.clip_size:
             print("reloading")
             self.is_reloading = True
+            self.to_reload_time= self.reload_time
             clock.schedule_once(self._reload_action, self.reload_time)
 
     def _reload_action(self, dt):
@@ -144,6 +233,7 @@ class shotgun(weapon):
             self.is_reloading = False
             print("weapon reloaded")
         else:
+            self.to_reload_time= self.reload_time
             clock.schedule_once(self._reload_action, self.reload_time)
 
     def _ready_weapon(self, dt):
