@@ -2,6 +2,34 @@ from backend import *
 from weapons import crossbow
 import pathlib as p
 
+class enemy(entity):
+    def __init__(self,  game_handler, **kwargs):
+        kwargs["collision_type"] = collision_group.enemy
+        self.point_value
+        self.damage
+        self.game_handler = game_handler
+        self.move_force = kwargs["move_force"]
+        self.speed = kwargs["speed"]
+        super().__init__(game_handler, **kwargs)
+
+        game_handler.enemy_list.append(self)
+
+    def die(self):
+        self.game_handler.on_enemy_death(self.point_value)
+        self.remove_from_sprite_lists()
+
+    def rotate(self):
+        angle = np.degrees(-np.arctan2(self.change_x, self.change_y))
+        self.turn_left(angle)
+
+    def is_in_play_area(self):
+
+        tmp_x = self.center_x <= self.game_handler.screen_dimensions[0] and self.center_x >= 0
+        tmp_y = self.center_y <= self.game_handler.screen_dimensions[1] and self.center_y >= 0
+
+        return tmp_x and tmp_y
+
+
 
 class dummy(enemy):
     point_value = 0

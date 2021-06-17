@@ -30,7 +30,7 @@ class MyGame(arcade.View):
         super().__init__()
         # self.set_exclusive_mouse()
 
-        arcade.set_background_color(arcade.csscolor.GREY)
+        arcade.set_background_color(BACKGROUND_COLOR)
         self.player_sprite = None
         self.player_list = None
         self.weapon_silhoutte_list = None
@@ -38,6 +38,7 @@ class MyGame(arcade.View):
         self.bullet_list = None
         self.bullet_sprite = None
         self.enemy_list = None
+        self.modifier_list = None
 
         self.space = pymunk.Space()
         self.space.iterations = 35
@@ -64,6 +65,7 @@ class MyGame(arcade.View):
 
         self.game_over_screen=game_over_screen
         self.data=data
+        
 
     def setup(self):
 
@@ -100,6 +102,7 @@ class MyGame(arcade.View):
         self.bullet_list = arcade.SpriteList()
         self.enemy_list = arcade.SpriteList()
         self.weapon_silhoutte_list = arcade.SpriteList()
+        self.modifier_list = arcade.SpriteList()
 
         self.player_sprite = player(self,
                                     weapons=None,
@@ -141,18 +144,23 @@ class MyGame(arcade.View):
         self.physics_engine.add_collision_handler(
             collision_group.enemy, collision_group.player, begin_handler=enemy_player_handler)
 
+
+        self.physics_engine.add_collision_handler(
+            collision_group.modifier, collision_group.enemy, begin_handler=modifier_enemy_handler)
+        self.physics_engine.add_collision_handler(
+            collision_group.modifier, collision_group.player, begin_handler=modifier_player_handler)
+        self.physics_engine.add_collision_handler(
+            collision_group.modifier, collision_group.enemy_bullet, begin_handler=modifier_enemy_bullet_handler)
+        self.physics_engine.add_collision_handler(
+            collision_group.modifier, collision_group.bullet, begin_handler=modifier_bullet_handler)
+
         self.points = 0
         self.player_sprite.weapons = weapon_holder(
             pistol(self.player_sprite, self),
             ak47(self.player_sprite, self),
             shotgun(self.player_sprite, self)
         )
-        '''
-        dummy(self, center_x=1920, center_y=1080)
-        zombie(self, center_x=1524, center_y=300)
-        hound(self, center_x=1524, center_y=724)
-        crossbowman(self, center_x=700, center_y=300)
-        '''
+
 
         self.weapon_hud_width = (self.screen_dimensions[0]-HUD_WIDTH)/2
         self.weapon_hud_height = HUD_HEIGHT*4/5
@@ -165,8 +173,9 @@ class MyGame(arcade.View):
                 (i-self.player_sprite.weapons.size()+2)* \
                 (self.weapon_hud_width-self.weapon_hud_offset)/self.player_sprite.weapons.size()
 
+
             weapon.weapon_silhoutte.center_y=self.weapon_hud_height*(4/5)/2 +self.weapon_hud_height/5
-            weapon.weapon_silhoutte.scale=self.weapon_hud_height*(4/5)/weapon.weapon_silhoutte.width
+            weapon.weapon_silhoutte.scale=self.weapon_hud_height*(4/5)/weapon.weapon_silhoutte.width*weapon.weapon_silhoutte.scale
             self.weapon_silhoutte_list.append(weapon.weapon_silhoutte)
 
         self.level.setup(self)
@@ -179,7 +188,7 @@ class MyGame(arcade.View):
     def on_show_view(self):
         """ Called once when view is activated. """
         self.setup()
-        arcade.set_background_color(arcade.csscolor.GREY)
+        arcade.set_background_color(BACKGROUND_COLOR)
 
 
     def on_draw(self):
@@ -188,20 +197,21 @@ class MyGame(arcade.View):
         self.player_list.draw()
         self.bullet_list.draw()
         self.enemy_list.draw()
+        self.modifier_list.draw()
         # self.confinement_box.draw()
 
         arcade.draw_rectangle_filled(
-            self.screen_dimensions[0]/2, HUD_HEIGHT/2, HUD_WIDTH, HUD_HEIGHT, (196, 196, 196, 128))
+            self.screen_dimensions[0]/2, HUD_HEIGHT/2, HUD_WIDTH, HUD_HEIGHT, GUI_COLOR)
         arcade.draw_text("Score\n{}".format(self.points),
-                         self.screen_dimensions[0]/2-1/3*HUD_WIDTH, HUD_HEIGHT/2, (0, 0, 0, 196), 48, align="center",
+                         self.screen_dimensions[0]/2-1/3*HUD_WIDTH, HUD_HEIGHT/2, FONT_COLOR, AUX_FONT_SIZE, align="center",
                          anchor_x="center", anchor_y="center")
 
         arcade.draw_text("Health\n{}/{}".format(self.player_sprite.current_health, self.player_sprite.health),
-                         self.screen_dimensions[0]/2, HUD_HEIGHT/2, (0, 0, 0, 196), 48, align="center",
+                         self.screen_dimensions[0]/2, HUD_HEIGHT/2, FONT_COLOR, AUX_FONT_SIZE, align="center",
                          anchor_x="center", anchor_y="center")
 
         arcade.draw_text("Enemies\n{}/{}".format(self.enemies_left, self.enemies_max),
-                         self.screen_dimensions[0]/2+1/3*HUD_WIDTH, HUD_HEIGHT/2, (0, 0, 0, 196), 48, align="center",
+                         self.screen_dimensions[0]/2+1/3*HUD_WIDTH, HUD_HEIGHT/2, FONT_COLOR, AUX_FONT_SIZE, align="center",
                          anchor_x="center", anchor_y="center")
 
 
@@ -216,7 +226,9 @@ class MyGame(arcade.View):
                 self.weapon_hud_height /2,
                 (self.weapon_hud_width-self.weapon_hud_offset)/self.player_sprite.weapons.size(),
                 self.weapon_hud_height,
-                (196, 196, 196, 128) if i != self.player_sprite.weapons.weapon_index else (0, 196, 0, 128))
+                ( GUI_COLOR if i != self.player_sprite.weapons.weapon_index else GUI_GREEN)-\
+                    GUI_ALPHA*weapon.to_reload_time/weapon.reload_time
+                )
             
             arcade.draw_text("{}/{}".format(weapon.get_current_clip_size() or "-",
                 weapon.get_clip_size()),
@@ -308,6 +320,10 @@ class MyGame(arcade.View):
             except Exception:
                 pass
 
+        """ ile czasu zostało do przeładowania"""
+        for weapon in self.player_sprite.weapons:
+            weapon.to_reload_time = max(0, weapon.to_reload_time-delta_time)
+
 
     def on_enemy_death(self,points):
         self.points += points
@@ -333,6 +349,8 @@ class MyGame(arcade.View):
         for sprite in self.enemy_list:
             sprite.kill()
         for sprite in self.bullet_list:
+            sprite.kill()
+        for sprite in self.modifier_list:
             sprite.kill()
         self.player_sprite.kill()
         self.level.__del__()
