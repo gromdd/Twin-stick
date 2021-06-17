@@ -266,10 +266,12 @@ class highscores(arcade.View):
 
 if __name__ == "__main__":
         
-    with open("data.txt", "a+") as file:
+    with open("data.txt", "rb+") as file:
         try:
             data=pickle.load(file)
-        except:
+        except Exception as e:
+            print("new file")
+            print(e)
             data={
                 "highscores" : dict()
             }
